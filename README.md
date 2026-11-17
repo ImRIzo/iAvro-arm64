@@ -88,25 +88,6 @@ defaults write com.omicronlab.inputmethod.AvroKeyboard VerifyDictionaryEngine -b
 defaults delete com.omicronlab.inputmethod.AvroKeyboard VerifyDictionaryEngine; killall "Avro Keyboard"
 ```
 
-## Releasing
-
-1. Push a tag: `git tag v2.0.0 && git push origin v2.0.0`
-2. `.github/workflows/release.yml` builds on an Apple Silicon runner, runs `make check`
-   and publishes the `.pkg`, `.zip` and `SHA256SUMS.txt` to a GitHub Release.
-3. If the `HOMEBREW_TAP_TOKEN` secret exists, it also updates
-   `Casks/avro-keyboard.rb` in `ImRIzo/homebrew-tap`.
-
-### One-time Homebrew tap setup
-1. Create an empty public repo named **`homebrew-tap`**.
-2. Create a fine-grained token with **Contents: read & write** on that repo only.
-3. Add it to this repo as the secret **`HOMEBREW_TAP_TOKEN`**
-   (Settings → Secrets and variables → Actions).
-
-The cask is generated from `packaging/homebrew/avro-keyboard.rb.in`. Because releases are
-ad-hoc signed and not notarized, the cask removes the quarantine flag after install;
-the official `homebrew/cask` repository no longer accepts unsigned apps, so a personal tap
-is needed. With an Apple Developer ID, sign and notarize the release and drop that step.
-
 ## Troubleshooting
 
 - **Several "Avro Keyboard" entries in Input Sources:** run `make purge`, log out and in,
