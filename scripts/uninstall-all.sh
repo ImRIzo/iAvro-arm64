@@ -62,7 +62,7 @@ while IFS= read -r p; do [[ -n "$p" && ! -d "$p" ]] && GHOSTS+=("$p"); done < <(
 if [[ ${#PATHS[@]} -eq 0 ]]; then echo "    none found on disk"; fi
 
 echo "==> 4/7 Unregistering + deleting copies"
-for p in "${PATHS[@]}"; do
+for p in ${PATHS[@]+"${PATHS[@]}"}; do
   "$LSREG" -u "$p" 2>/dev/null
   case "$p" in
     "$HOME/Library/Input Methods/"*) rm -rf "$p" && echo "    deleted  $p" ;;
@@ -75,7 +75,7 @@ for p in "${PATHS[@]}"; do
       fi ;;
   esac
 done
-for p in "${GHOSTS[@]}"; do "$LSREG" -u "$p" 2>/dev/null && echo "    unregistered stale $p"; done
+for p in ${GHOSTS[@]+"${GHOSTS[@]}"}; do "$LSREG" -u "$p" 2>/dev/null && echo "    unregistered stale $p"; done
 
 echo "==> 5/7 Forgetting installer receipts"
 for r in $(pkgutil --pkgs 2>/dev/null | grep -i -E 'omicronlab|avro'); do
