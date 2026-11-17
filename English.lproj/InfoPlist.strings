@@ -1,0 +1,6 @@
+/* Localized versions of Info.plist keys */
+
+NSHumanReadableCopyright = "© OmicronLab and contributors. MPL 1.1";
+
+CFBundleName = "Avro Keyboard";
+CFBundleDisplayName = "Avro Keyboard";

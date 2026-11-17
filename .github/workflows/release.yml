@@ -1,0 +1,73 @@
+name: Release
+
+# Push a tag like v2.0.0 → builds, creates a GitHub Release with the .pkg/.zip,
+# and (if HOMEBREW_TAP_TOKEN is set) updates the cask in <owner>/homebrew-tap.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      zip_sha: ${{ steps.sha.outputs.zip_sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release assets
+        env:
+          AVRO_VERSION: ${{ steps.ver.outputs.version }}
+          AVRO_BUILD: ${{ github.run_number }}
+        run: scripts/build.sh --dist
+
+      - name: Engine check
+        run: scripts/engine-check.sh
+
+      - id: sha
+        run: echo "zip_sha=$(shasum -a 256 build/dist/AvroKeyboard-${{ steps.ver.outputs.version }}.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/dist/* \
+            --title "Avro Keyboard $GITHUB_REF_NAME" \
+            --generate-notes
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        if: env.TAP_TOKEN != ''
+
+      - name: Update cask in tap
+        if: env.TAP_TOKEN != ''
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          SHA256: ${{ needs.release.outputs.zip_sha }}
+          REPO: ${{ github.repository }}
+          TAP: ${{ github.repository_owner }}/homebrew-tap
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${TAP}.git" tap
+          mkdir -p tap/Casks
+          scripts/render-cask.sh "$VERSION" "$SHA256" "$REPO" > tap/Casks/avro-keyboard.rb
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/avro-keyboard.rb
+          git commit -m "avro-keyboard ${VERSION}" || echo "No changes"
+          git push
+
+      - name: Skip notice
+        if: env.TAP_TOKEN == ''
+        run: echo "HOMEBREW_TAP_TOKEN not set — skipping tap update."

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Restart any running copy so the newly installed version is picked up.
+killall "Avro Keyboard" 2>/dev/null || true
+exit 0
