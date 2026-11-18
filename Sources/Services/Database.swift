@@ -1,6 +1,5 @@
 import Foundation
 import os
-import SQLite3
 
 /// Dictionary of Bangla words. Immutable after init, so `find(term:)` may be
 /// called from any thread (the controller runs it on a background queue).
@@ -26,65 +25,19 @@ final class Database: @unchecked Sendable {
 
     private init() {
         let started = ContinuousClock.now
-        guard let filePath = Bundle.main.path(forResource: "database", ofType: "db3") else {
-            fatalError("database.db3 not found in bundle")
+        guard let url = Bundle.main.url(forResource: "avrodict", withExtension: "bin") else {
+            fatalError("avrodict.bin not found in bundle")
         }
-
-        var dbPointer: OpaquePointer?
-        guard sqlite3_open_v2(filePath, &dbPointer, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
-              let dbHandle = dbPointer else {
-            fatalError("Failed to open database.db3")
+        guard let loaded = DictionaryFile.load(url),
+              Self.tableNames.allSatisfy({ loaded.tables[$0.lowercased()] != nil }),
+              !loaded.suffixes.isEmpty else {
+            fatalError("avrodict.bin is invalid or incomplete — rebuild it with scripts/make-dict.py")
         }
-        defer { sqlite3_close(dbHandle) }
-
-        var source = "avrodict.bin"
-        if let url = Bundle.main.url(forResource: "avrodict", withExtension: "bin"),
-           let loaded = DictionaryFile.load(url),
-           Self.tableNames.allSatisfy({ loaded[$0.lowercased()] != nil }) {
-            self.tables = loaded
-        } else {
-            // Fallback: read SQLite and sort in memory (slower start-up, same results).
-            source = "database.db3"
-            var loaded: [String: WordTable] = [:]
-            for name in Self.tableNames {
-                loaded[name.lowercased()] = WordTable(words: Self.loadTable(name: name, from: dbHandle))
-            }
-            self.tables = loaded
-        }
-        self.suffixes = Self.loadSuffixTable(from: dbHandle)
+        self.tables = loaded.tables
+        self.suffixes = loaded.suffixes
 
         let words = tables.values.reduce(0) { $0 + $1.count }
-        Self.log.info("Dictionary loaded from \(source, privacy: .public): \(words) words in \((ContinuousClock.now - started).milliseconds, format: .fixed(precision: 1)) ms")
-    }
-
-    private static func loadTable(name: String, from dbHandle: OpaquePointer) -> [String] {
-        var items: [String] = []
-        let query = "SELECT Words FROM \(name)"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(dbHandle, query, -1, &stmt, nil) == SQLITE_OK else { return items }
-        defer { sqlite3_finalize(stmt) }
-
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if let cString = sqlite3_column_text(stmt, 0) {
-                items.append(String(cString: cString))
-            }
-        }
-        return items
-    }
-
-    private static func loadSuffixTable(from dbHandle: OpaquePointer) -> [String: String] {
-        var result: [String: String] = [:]
-        let query = "SELECT English, Bangla FROM Suffix"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(dbHandle, query, -1, &stmt, nil) == SQLITE_OK else { return result }
-        defer { sqlite3_finalize(stmt) }
-
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if let eng = sqlite3_column_text(stmt, 0), let bng = sqlite3_column_text(stmt, 1) {
-                result[String(cString: eng)] = String(cString: bng)
-            }
-        }
-        return result
+        Self.log.info("Dictionary loaded from avrodict.bin: \(words) words, \(self.suffixes.count) suffixes in \((ContinuousClock.now - started).milliseconds, format: .fixed(precision: 1)) ms")
     }
 
     /// All dictionary words matching the phonetic pattern of `term`.

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Convert database.db3 word tables into avrodict.bin — a pre-sorted, compact
-binary dictionary that Avro Keyboard loads at startup without SQLite or sorting.
+"""Convert database.db3 into avrodict.bin — a pre-sorted, compact binary
+dictionary (words + suffixes) that Avro Keyboard loads at startup. The app no
+longer ships or reads database.db3; it is only the source for this file.
 
 Format (all integers little-endian):
-    magic        4 bytes  b"AVD1"
+    magic        4 bytes  b"AVD2"
     tableCount   u32
     per table:
         nameLen  u8, name (ASCII, lowercase), zero padding to a 4-byte boundary
@@ -12,6 +13,10 @@ Format (all integers little-endian):
         offsets  u32 * (count+1)   start of each word in `units` (last = total)
         data     u16 * units       UTF-16 code units, words sorted by code unit, de-duplicated
         padding  0/2 bytes         keeps the next table 4-byte aligned
+    suffixCount  u32
+    per suffix (in database row order; a later duplicate key wins, as before):
+        engLen   u16, eng (UTF-8)
+        bnLen    u16, bn  (UTF-8)
 
 Usage:  python3 scripts/make-dict.py database.db3 avrodict.bin
 """
@@ -30,7 +35,7 @@ TABLES = [
 
 def main(src: str, dst: str) -> None:
     con = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
-    out = bytearray(b"AVD1")
+    out = bytearray(b"AVD2")
     out += struct.pack("<I", len(TABLES))
     total_words = 0
     for name in TABLES:
@@ -54,9 +59,15 @@ def main(src: str, dst: str) -> None:
         while len(out) % 4:
             out += b"\0"
         total_words += len(enc)
+    suffixes = [(e, b) for e, b in con.execute("SELECT English, Bangla FROM Suffix") if e and b]
+    out += struct.pack("<I", len(suffixes))
+    for e, b in suffixes:
+        for txt in (e, b):
+            raw = txt.encode("utf-8")
+            out += struct.pack("<H", len(raw)) + raw
     with open(dst, "wb") as f:
         f.write(out)
-    print(f"wrote {dst}: {len(TABLES)} tables, {total_words} words, {len(out)} bytes")
+    print(f"wrote {dst}: {len(TABLES)} tables, {total_words} words, {len(suffixes)} suffixes, {len(out)} bytes")
 
 
 if __name__ == "__main__":

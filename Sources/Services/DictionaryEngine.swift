@@ -222,7 +222,7 @@ final class WordTable: @unchecked Sendable {
         self.offsets = offsets
     }
 
-    /// Build from an unsorted list (used when avrodict.bin is missing).
+    /// Build from an unsorted list (used by tests/tools).
     convenience init(words: [String]) {
         let arrays = Set(words.lazy.filter { !$0.isEmpty }.map { Array($0.utf16) })
             .sorted { $0.lexicographicallyPrecedes($1) }
@@ -281,11 +281,11 @@ final class WordTable: @unchecked Sendable {
 // MARK: - avrodict.bin loader
 
 /// Reads the pre-sorted dictionary produced by scripts/make-dict.py.
-/// Returns nil on any format problem so the caller can fall back to SQLite.
+/// Returns nil on any format problem (format described in scripts/make-dict.py).
 enum DictionaryFile {
-    static func load(_ url: URL) -> [String: WordTable]? {
+    static func load(_ url: URL) -> (tables: [String: WordTable], suffixes: [String: String])? {
         guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return nil }
-        return data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> [String: WordTable]? in
+        return data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> (tables: [String: WordTable], suffixes: [String: String])? in
             var p = 0
             func u32() -> UInt32? {
                 guard p + 4 <= raw.count else { return nil }
@@ -296,7 +296,7 @@ enum DictionaryFile {
                 p += 4
                 return UInt32(littleEndian: v)
             }
-            guard raw.count >= 8, raw[0] == 0x41, raw[1] == 0x56, raw[2] == 0x44, raw[3] == 0x31 else {
+            guard raw.count >= 8, raw[0] == 0x41, raw[1] == 0x56, raw[2] == 0x44, raw[3] == 0x32 else {
                 return nil
             }
             p = 4
@@ -334,7 +334,25 @@ enum DictionaryFile {
                 for k in 0..<Int(wordCount) where offsets[k] >= offsets[k + 1] { return nil }
                 tables[name] = WordTable(units: units, offsets: offsets)
             }
-            return tables
+
+            func utf8String() -> String? {
+                guard p + 2 <= raw.count else { return nil }
+                let len = Int(raw[p]) | (Int(raw[p + 1]) << 8)
+                p += 2
+                guard p + len <= raw.count else { return nil }
+                let s = String(decoding: UnsafeRawBufferPointer(rebasing: raw[p..<(p + len)]), as: UTF8.self)
+                p += len
+                return s
+            }
+            guard let suffixCount = u32() else { return nil }
+            var suffixes: [String: String] = [:]
+            suffixes.reserveCapacity(Int(suffixCount))
+            for _ in 0..<suffixCount {
+                guard let eng = utf8String(), let bn = utf8String() else { return nil }
+                suffixes[eng] = bn
+            }
+            guard p == raw.count else { return nil }
+            return (tables, suffixes)
         }
     }
 }

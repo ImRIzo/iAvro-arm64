@@ -72,7 +72,6 @@ while IFS= read -r -d '' f; do SOURCES+=("$f"); done \
   -module-name AvroKeyboard \
   -O -whole-module-optimization \
   -framework Cocoa -framework InputMethodKit -framework SwiftUI \
-  -lsqlite3 \
   -o "${MACOS_DIR}/${APP_NAME}" \
   "${SOURCES[@]}"
 
@@ -87,14 +86,16 @@ cp "${PLIST_SRC}" "${CONTENTS}/Info.plist"
 plutil -lint "${CONTENTS}/Info.plist" >/dev/null
 printf 'APPL????' > "${CONTENTS}/PkgInfo"
 
-for f in database.db3 regex.json data.json autodict.plist preferences.plist; do
+for f in regex.json data.json autodict.plist preferences.plist; do
   cp "${ROOT}/$f" "${RESOURCES}/"
 done
 cp -R "${ROOT}/Credits.rtfd" "${ROOT}/English.lproj" "${RESOURCES}/"
 cp "${ROOT}/Images.xcassets/MenuIcon.imageset/final16flat2.png" "${RESOURCES}/MenuIcon.png"
 
-# Pre-sorted binary dictionary; regenerate if missing or older than the DB.
-if [[ ! -f "${ROOT}/avrodict.bin" || "${ROOT}/database.db3" -nt "${ROOT}/avrodict.bin" ]]; then
+# Binary dictionary (words + suffixes) — the only dictionary file shipped.
+# Regenerate if missing, or older than the source DB or the generator.
+if [[ ! -f "${ROOT}/avrodict.bin" || "${ROOT}/database.db3" -nt "${ROOT}/avrodict.bin" \
+      || "${ROOT}/scripts/make-dict.py" -nt "${ROOT}/avrodict.bin" ]]; then
   echo "    generating avrodict.bin"
   python3 "${ROOT}/scripts/make-dict.py" "${ROOT}/database.db3" "${ROOT}/avrodict.bin"
 fi
