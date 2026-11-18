@@ -13,15 +13,16 @@ cask "avro-keyboard" do
   end
 
   depends_on arch: :arm64
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   input_method "Avro Keyboard.app"
 
   # The app is ad-hoc signed, not notarized: without this macOS refuses to load
-  # the input method. Remove once releases are Developer ID signed + notarized.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{Dir.home}/Library/Input Methods/Avro Keyboard.app"]
+  # the input method. Strip quarantine in the staged copy before it is moved to
+  # ~/Library/Input Methods. Remove once releases are Developer ID signed + notarized.
+  preflight_steps do
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{staged_path}}/Avro Keyboard.app"]
   end
 
   uninstall quit: "com.omicronlab.inputmethod.AvroKeyboard"
